@@ -40,32 +40,40 @@ local ANIM = {
 	BobDegrees    = 3.5,   -- покачивание корпуса при висении
 	NeckBob       = 1.4,   -- доля покачивания, уходящая в шею
 
+	-- Оси: у конечностей положительный поворот вокруг X уводит вперёд, у головы
+	-- поднимает взгляд. Поворот считается в системе родителя сустава, поэтому
+	-- знаки одинаковы и для R6, и для R15.
 	-- горизонтальный полёт («супермен»)
-	ArmForward    = -96,
+	ArmForward    = 96,
 	ArmProneYaw   = 7,
-	ElbowProne    = -9,
-	HipProne      = 7,
+	ElbowProne    = 6,
+	HipProne      = -6,
 	KneeProne     = -7,
-	WaistArch     = 10,
-	HeadUpProne   = -33,
+	WaistArch     = -8,
+	HeadUpProne   = 48,
 
 	-- пикирование: руки прижаты вдоль тела
-	ArmDive       = 16,
+	ArmDive       = -20,
 	ArmDiveYaw    = 14,
-	ElbowDive     = -34,
-	KneeDive      = -18,
-	HeadDive      = -18,
+	ElbowDive     = -30,
+	KneeDive      = -14,
+	HeadDive      = 20,
 
 	-- висение
 	LeanHover     = -9,
-	ArmHoverBack  = 17,
-	ArmSpread     = -15,
+	ArmHoverBack  = 10,
+	ArmSpread     = 15,
 	ArmHoverYaw   = 11,
-	ElbowHover    = -27,
-	KneeHover     = 23,
+	ElbowHover    = 25,
+	KneeHover     = -23,
 	LegSpread     = 8,
 	HeadHover     = 5,
 }
+
+-- Знаки позы: если рука или крен уходят не в ту сторону, переключается прямо
+-- в игре — в панели диагностики по клавише O, без правки кода.
+local POSE_SIGNS = { arms = 1, head = 1, bank = 1 }
+local POSE_ENABLED = true
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §4. Настройки ауры
@@ -969,6 +977,9 @@ end)
 --  Имена подходят и для R15, и для R6: чего в риге нет — то просто пропускается.
 -- ═══════════════════════════════════════════════════════════════════════════════
 
+-- Единичный поворот: сравниваем с ним Transform, чтобы не писать его каждый кадр.
+local IDENTITY = CFrame.new()
+
 local JOINT_ALIASES = {
 	root          = { "Root", "RootJoint" },
 	waist         = { "Waist" },
@@ -1156,6 +1167,11 @@ function Flight:_applyJoint(key, angles)
 	end
 	local rotation = CFrame.Angles(angles.x, angles.y, angles.z)
 	motor.C0 = CFrame.new(original.Position) * (rotation * original.Rotation)
+	-- Обнуляем Transform: Animator пишет туда кадры анимаций, а движок складывает
+	-- их с нашим C0 — из-за этого поза выглядит смазанной или пропадает совсем.
+	if motor.Transform ~= IDENTITY then
+		motor.Transform = IDENTITY
+	end
 end
 
 -- Наклон всего корпуса: крен добавляется здесь, чтобы не накапливался в self.body.
@@ -1179,12 +1195,13 @@ function Flight:_poseTargets()
 	local blend = self.blend
 	local hover = 1 - blend
 	local dive = self.dive
+	local arms = POSE_SIGNS.arms
 	local bob = math.sin(Util.now() * 2.2) * math.rad(ANIM.BobDegrees) * hover
 
 	local armForward = math.rad(ANIM.ArmForward) * blend * (1 - dive)
 	local armDive = math.rad(ANIM.ArmDive) * blend * dive
 	local armBack = math.rad(ANIM.ArmHoverBack) * hover
-	local armSpread = math.rad(ANIM.ArmSpread) * hover
+	local armSpread = math.rad(ANIM.ArmSpread) * hover * arms
 	local armYaw = math.rad(ANIM.ArmHoverYaw) * hover
 	local armYawDive = math.rad(ANIM.ArmDiveYaw) * blend * dive
 
@@ -1202,16 +1219,16 @@ function Flight:_poseTargets()
 
 	local hip = math.rad(ANIM.HipProne) * blend
 	local legSpread = math.rad(ANIM.LegSpread) * hover
-	local shoulderX = armForward + armDive + armBack
-	local shoulderY = armYaw + armYawDive
+	local shoulderX = (armForward + armDive + armBack) * arms
+	local shoulderY = (armYaw + armYawDive) * arms
 
 	return {
 		waist = { x = math.rad(ANIM.LeanHover) * hover + math.rad(ANIM.WaistArch) * blend + bob * 0.4 },
-		neck = { x = head + bob * ANIM.NeckBob },
+		neck = { x = (head + bob * ANIM.NeckBob) * POSE_SIGNS.head },
 		leftShoulder = { x = shoulderX, y = shoulderY, z = -armSpread },
 		rightShoulder = { x = shoulderX, y = -shoulderY, z = armSpread },
-		leftElbow = { x = elbow },
-		rightElbow = { x = elbow },
+		leftElbow = { x = elbow * arms },
+		rightElbow = { x = elbow * arms },
 		leftHip = { x = hip, z = legSpread },
 		rightHip = { x = hip, z = -legSpread },
 		leftKnee = { x = knee },
@@ -1444,6 +1461,15 @@ function Flight:activate()
 	humanoid.WalkSpeed = 0
 	humanoid.AutoRotate = false
 
+	-- Гасим уже играющие анимации: иначе Animator продолжает вести суставы
+	-- своими значениями и наша поза визуально не проявляется.
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animator then
+		for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+			track:Stop(0)
+		end
+	end
+
 	self.moveMode = (FLIGHT.MoveMode == "cframe") and "cframe" or "physics"
 	self.watchdogTime = 0
 	self.watchdogMoved = 0
@@ -1618,9 +1644,11 @@ function Flight:step(delta)
 	end
 	self.body = self.body:Lerp(proneTarget, poseAlpha)
 
-	local bank = -self.lateral * math.rad(ANIM.BankMax) * self.blend
-	self:_applyBody(bank + math.rad(self.rollExtra))
-	self:_applyPose(delta)
+	local bank = -self.lateral * math.rad(ANIM.BankMax) * self.blend * POSE_SIGNS.bank
+	if POSE_ENABLED then
+		self:_applyBody(bank + math.rad(self.rollExtra))
+		self:_applyPose(delta)
+	end
 
 	if FX.CameraEnabled then
 		CameraFX:feed(self.speedRatio, math.deg(bank), self.humanoid)
@@ -2687,7 +2715,7 @@ function Ui.new()
 		Name = "Diagnostics",
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 24, 1, -28),
-		Size = UDim2.fromOffset(312, 196),
+		Size = UDim2.fromOffset(324, 346),
 		BackgroundTransparency = 1,
 		Visible = false,
 		Parent = self.screenGui,
@@ -2761,9 +2789,34 @@ function Ui.new()
 	diagModeValue.Text = "АВТО"
 	self.diagModeValue = diagModeValue
 
+	-- Калибровка позы прямо в игре: знаки осей и полное выключение.
+	local armsRow, armsValue = self:_actionRow(self.diagPanel, 68, "Знак рук", function()
+		POSE_SIGNS.arms = -POSE_SIGNS.arms
+		armsValue.Text = POSE_SIGNS.arms > 0 and "обычный" or "обратный"
+		self:toast("знак рук: " .. armsValue.Text)
+	end)
+	armsValue.Text = "обычный"
+
+	local bankSignRow, bankSignValue = self:_actionRow(self.diagPanel, 98, "Знак крена", function()
+		POSE_SIGNS.bank = -POSE_SIGNS.bank
+		bankSignValue.Text = POSE_SIGNS.bank > 0 and "обычный" or "обратный"
+		self:toast("знак крена: " .. bankSignValue.Text)
+	end)
+	bankSignValue.Text = "обычный"
+
+	local poseRow, poseValue = self:_actionRow(self.diagPanel, 128, "Поза (анимация)", function()
+		POSE_ENABLED = not POSE_ENABLED
+		poseValue.Text = POSE_ENABLED and "включена" or "выключена"
+		if not POSE_ENABLED and FlightInstance then
+			FlightInstance:_restoreOriginalPose()
+		end
+		self:toast("поза: " .. poseValue.Text)
+	end)
+	poseValue.Text = "включена"
+
 	self.diagBody = Util.create("TextLabel", {
-		Position = UDim2.fromOffset(16, 72),
-		Size = UDim2.new(1, -32, 1, -82),
+		Position = UDim2.fromOffset(16, 168),
+		Size = UDim2.new(1, -32, 1, -178),
 		BackgroundTransparency = 1,
 		RichText = true,
 		TextWrapped = true,
@@ -3030,6 +3083,17 @@ function Ui:_renderDiagnostics(flight)
 		add("Humanoid", "нет")
 	end
 
+	local jointCount = 0
+	for _ in pairs(flight.joints) do
+		jointCount += 1
+	end
+	add("суставов найдено", jointCount)
+	add("вес позы", string.format("%.2f", flight.blend))
+	add("наклон корпуса", string.format("%.0f°", math.deg(math.acos(
+		Util.clamp(flight.body.UpVector:Dot(Vector3.yAxis), -1, 1)
+	))))
+	add("поза", POSE_ENABLED and "включена" or "выключена")
+	add("знак рук / крена", POSE_SIGNS.arms .. " / " .. POSE_SIGNS.bank)
 	add("фокус в чате", Util.isTyping() and "да" or "нет")
 	self.diagBody.Text = table.concat(lines, "\n")
 end
