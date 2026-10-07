@@ -3,12 +3,15 @@ local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
 local Lighting         = game:GetService("Lighting")
+
 local Workspace   = workspace
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §2. Настройки полёта
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local FLIGHT = {
 	MinSpeed    = 15,      -- нижняя граница слайдера
 	MaxSpeed    = 500,     -- верхняя граница слайдера
@@ -22,16 +25,21 @@ local FLIGHT = {
 	RollReturn  = 260,     -- скорость возврата бочки после отпускания, град/с
 	DoubleTapWindow = 0.32, -- окно двойного нажатия Space, сек
 	Noclip      = false,   -- тестовый режим: персонаж проходит сквозь стены
+	MoveMode    = "auto",  -- "auto" | "physics" | "cframe": чем именно двигать
+	WatchdogTime = 0.5,    -- сколько ждём перемещения, прежде чем сменить режим
 }
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §3. Настройки поз (градусы)
 --  Если сустав уходит не в ту сторону — поменяй знак у числа. Всё в одном месте.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local ANIM = {
 	Response      = 9,     -- скорость перетекания висение ↔ полёт
 	BankMax       = 40,    -- максимальный крен вбок
 	BobDegrees    = 3.5,   -- покачивание корпуса при висении
 	NeckBob       = 1.4,   -- доля покачивания, уходящая в шею
+
 	-- горизонтальный полёт («супермен»)
 	ArmForward    = -96,
 	ArmProneYaw   = 7,
@@ -40,12 +48,14 @@ local ANIM = {
 	KneeProne     = -7,
 	WaistArch     = 10,
 	HeadUpProne   = -33,
+
 	-- пикирование: руки прижаты вдоль тела
 	ArmDive       = 16,
 	ArmDiveYaw    = 14,
 	ElbowDive     = -34,
 	KneeDive      = -18,
 	HeadDive      = -18,
+
 	-- висение
 	LeanHover     = -9,
 	ArmHoverBack  = 17,
@@ -56,34 +66,43 @@ local ANIM = {
 	LegSpread     = 8,
 	HeadHover     = 5,
 }
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §4. Настройки ауры
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local AURA = {
 	Enabled       = true,
 	FadeSpeed     = 5.5,   -- скорость розжига и затухания ауры
 	HueSpeed      = 0.12,  -- скорость переливания оттенка (оборотов в секунду)
+
 	HighlightFill = 0.62,  -- прозрачность чёрной заливки контура
 	HighlightEdge = 0.12,  -- прозрачность переливающейся обводки
+
 	TrailLifetime = 0.42,
 	TrailWidth    = 1.5,   -- половина расстояния между точками крепления шлейфа
 	TrailBlack    = 0.15,
 	TrailAccent   = 0.28,
+
 	OrbCount      = 8,     -- тёмные сферы по орбите
 	OrbRadius     = 3.4,
 	OrbRise       = 0.9,   -- разброс по высоте
 	OrbSpin       = 0.8,   -- оборотов в секунду
 	OrbSize       = 0.42,
 	OrbTransparency = 0.25,
+
 	LightRange    = 15,
 	LightBrightness = 2.2,
+
 	SmokeRate     = 26,
 	SparkRate     = 14,
 	LineRate      = 90,    -- «линии скорости» на разгоне
 }
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §5. Настройки камеры и пост-эффектов
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local FX = {
 	CameraEnabled = true,
 	FovBoost      = 22,    -- на сколько расширяется обзор на максимальной скорости
@@ -91,24 +110,29 @@ local FX = {
 	ShakeMax      = 0.16,  -- амплитуда тряски, studs
 	BankRoll      = 7,     -- наклон камеры в крен, градусы
 	RollResponse  = 5,
+
 	GradeEnabled  = true,
 	Contrast      = 0.12,
 	Saturation    = 0.18,
 	Brightness    = -0.02,
+
 	BloomEnabled  = true,
 	BloomIntensity = 0.55,
 	BloomSize     = 18,
 	BloomThreshold = 1.1,
 }
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §6. Уровни качества
 --  Авто-режим понижает уровень, если средний FPS просел.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local QUALITY_LEVELS = {
 	{ name = "ВЫСОКОЕ", orbScale = 1.00, particleScale = 1.00, trail = true,  highlight = true, speedLines = true,  grade = true,  bloom = true  },
 	{ name = "СРЕДНЕЕ", orbScale = 0.62, particleScale = 0.55, trail = true,  highlight = true, speedLines = true,  grade = true,  bloom = false },
 	{ name = "НИЗКОЕ",  orbScale = 0.38, particleScale = 0.25, trail = false, highlight = true, speedLines = false, grade = false, bloom = false },
 }
+
 local QUALITY = {
 	level        = 1,        -- текущий уровень, 1..3
 	auto         = true,     -- авто-понижение
@@ -116,10 +140,12 @@ local QUALITY = {
 	fpsCeil      = 58,       -- выше этого — пробуем вернуть уровень назад
 	averageWindow = 1.2,     -- окно усреднения, сек
 }
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §7. Темы оформления
 --  aura — цвет заливки контура (чёрный), shimmer — палитра переливания.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local THEMES = {
 	{
 		id = "VOID",
@@ -182,10 +208,13 @@ local THEMES = {
 		},
 	},
 }
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §8. Мелкие утилиты
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local Util = {}
+
 -- Создание инстанса с детьми одной строкой: удобно и читаемо.
 function Util.create(className, props, children)
 	local instance = Instance.new(className)
@@ -204,6 +233,7 @@ function Util.create(className, props, children)
 	end
 	return instance
 end
+
 -- FontFace — современный способ; на старых клиентах откат на Font.
 function Util.setFont(object, font)
 	if pcall(function()
@@ -213,6 +243,7 @@ function Util.setFont(object, font)
 	end
 	object.Font = font
 end
+
 function Util.tween(instance, duration, props, style, direction)
 	local info = TweenInfo.new(
 		duration,
@@ -223,12 +254,14 @@ function Util.tween(instance, duration, props, style, direction)
 	animation:Play()
 	return animation
 end
+
 function Util.isTyping()
 	local ok, textBox = pcall(function()
 		return UserInputService:GetFocusedTextBox()
 	end)
 	return ok and textBox ~= nil
 end
+
 function Util.clamp(value, low, high)
 	if value < low then
 		return low
@@ -237,13 +270,16 @@ function Util.clamp(value, low, high)
 	end
 	return value
 end
+
 -- Экспоненциальное сглаживание: одинаковая плавность при любом FPS.
 function Util.smooth(current, target, speed, delta)
 	return current + (target - current) * (1 - math.exp(-speed * delta))
 end
+
 function Util.smoothVector(current, target, speed, delta)
 	return current:Lerp(target, 1 - math.exp(-speed * delta))
 end
+
 function Util.colorSequence(colors)
 	local keypoints = {}
 	local count = #colors
@@ -252,6 +288,7 @@ function Util.colorSequence(colors)
 	end
 	return ColorSequence.new(keypoints)
 end
+
 function Util.numberSequence(values)
 	local keypoints = {}
 	local count = #values
@@ -260,38 +297,47 @@ function Util.numberSequence(values)
 	end
 	return NumberSequence.new(keypoints)
 end
+
 -- Предрасчёт колеса оттенков: вместо Color3.fromHSV каждый кадр берём готовый.
 local HUE_STEPS = 48
 local HUE_WHEEL = table.create(HUE_STEPS)
 for index = 1, HUE_STEPS do
 	HUE_WHEEL[index] = Color3.fromHSV((index - 1) / HUE_STEPS, 0.62, 1)
 end
+
 function Util.wheelColor(phase)
 	local index = math.floor((phase % 1) * HUE_STEPS) + 1
 	return HUE_WHEEL[index]
 end
+
 function Util.round(value)
 	return math.floor(value + 0.5)
 end
+
 function Util.now()
 	return os.clock()
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §9. Тема: единое место, откуда интерфейс и аура берут цвета
 --  Слушатели перекрашиваются сами, поэтому смена темы ничего не ломает.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local Theme = {
 	index = 1,
 	listeners = {},
 	current = THEMES[1],
 }
+
 function Theme.get()
 	return Theme.current
 end
+
 function Theme.onChange(callback)
 	table.insert(Theme.listeners, callback)
 	callback(Theme.current)
 end
+
 function Theme.apply(index)
 	local wrapped = ((index - 1) % #THEMES) + 1
 	Theme.index = wrapped
@@ -300,42 +346,51 @@ function Theme.apply(index)
 		callback(Theme.current)
 	end
 end
+
 function Theme.next()
 	Theme.apply(Theme.index + 1)
 	return Theme.current
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §10. Кэш ввода
 --  Клавиши читаются из событий, а не опросом IsKeyDown каждый кадр: это дешевле
 --  и одинаково работает для клавиатуры и кнопок геймпада.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local Input = {
 	keys = {},
 	gamepad = false,
 	thumbstick = Vector3.zero,
 	triggers = { left = 0, right = 0 },
 }
+
 function Input.isDown(keyCode)
 	return Input.keys[keyCode] == true
 end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if input.KeyCode ~= Enum.KeyCode.Unknown then
 		Input.keys[input.KeyCode] = true
 	end
 end)
+
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode ~= Enum.KeyCode.Unknown then
 		Input.keys[input.KeyCode] = false
 	end
 end)
+
 UserInputService.GamepadConnected:Connect(function()
 	Input.gamepad = true
 end)
+
 UserInputService.GamepadDisconnected:Connect(function()
 	Input.gamepad = false
 	Input.thumbstick = Vector3.zero
 	Input.triggers = { left = 0, right = 0 }
 end)
+
 -- Опрос стиков только если геймпад подключён: иначе это лишняя работа каждый кадр.
 function Input.pollGamepad()
 	if not Input.gamepad then
@@ -359,10 +414,12 @@ function Input.pollGamepad()
 	end
 	Input.gamepadMove = move
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §11. Эффекты камеры и пост-обработка
 --  Привязывается позже стандартной камеры, иначе она перезапишет наш наклон.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local CameraFX = {
 	enabled = false,
 	bound = false,
@@ -374,7 +431,9 @@ local CameraFX = {
 	grade = nil,
 	bloom = nil,
 }
+
 CameraFX.BIND_NAME = "FlightControllerCamera"
+
 function CameraFX:_ensureEffects()
 	if FX.GradeEnabled and not self.grade then
 		local existing = Lighting:FindFirstChild("FlightControllerGrade")
@@ -407,6 +466,7 @@ function CameraFX:_ensureEffects()
 		end
 	end
 end
+
 function CameraFX:_updateGrade(delta, target)
 	if self.grade then
 		local quality = QUALITY_LEVELS[QUALITY.level]
@@ -427,11 +487,13 @@ function CameraFX:_updateGrade(delta, target)
 		end
 	end
 end
+
 function CameraFX:setEnabled(state)
 	if state == self.enabled then
 		return
 	end
 	self.enabled = state
+
 	if state then
 		self:_ensureEffects()
 		local camera = Workspace.CurrentCamera
@@ -464,16 +526,20 @@ function CameraFX:setEnabled(state)
 		self:_updateGrade(1, 0)
 	end
 end
+
 function CameraFX:step(delta)
 	local camera = Workspace.CurrentCamera
 	if not camera then
 		return
 	end
+
 	local target = self.intensity
 	local quality = QUALITY_LEVELS[QUALITY.level]
+
 	-- Обзор расширяется от скорости: даёт ощущение разгона.
 	local fovTarget = self.baseFov + FX.FovBoost * target
 	camera.FieldOfView = Util.smooth(camera.FieldOfView, fovTarget, FX.FovResponse, delta)
+
 	-- Лёгкая тряска на большой скорости.
 	self.shakeTime += delta
 	local shake = FX.ShakeMax * target * target
@@ -485,29 +551,35 @@ function CameraFX:step(delta)
 		)
 		self.humanoid.CameraOffset = Util.smoothVector(self.humanoid.CameraOffset, offset, 18, delta)
 	end
+
 	-- Наклон камеры в крен: пишем после стандартной камеры, поэтому не спорим с ней.
 	local rollTarget = math.rad(self.bankRoll or 0)
 	self.roll = Util.smooth(self.roll, rollTarget, FX.RollResponse, delta)
 	if math.abs(self.roll) > 0.0005 then
 		camera.CFrame = camera.CFrame * CFrame.Angles(0, 0, self.roll)
 	end
+
 	self:_updateGrade(delta, quality.grade and target or 0)
 end
+
 -- Обратная связь от полёта: скорость, крен, персонаж.
 function CameraFX:feed(speedRatio, bankRoll, humanoid)
 	self.intensity = speedRatio
 	self.bankRoll = bankRoll
 	self.humanoid = humanoid
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §12. Аура: чёрная подсветка, шлейфы, дым, искры, орбита тёмных сфер
 --  Всё живёт в отдельной папке в Workspace и полностью выключается вне полёта,
 --  поэтому в покое аура не стоит ни одного кадра симуляции частиц.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local AURA_TEXTURES = {
 	smoke = "rbxasset://textures/particles/smoke_main.dds",
 	spark = "rbxasset://textures/particles/sparkles_main.dds",
 }
+
 -- Предрасчёт на старте: ни одной новой ColorSequence за кадр.
 local TRAIL_SEQUENCES = table.create(HUE_STEPS)
 local SPARK_SEQUENCES = table.create(HUE_STEPS)
@@ -517,6 +589,7 @@ for index = 1, HUE_STEPS do
 	SPARK_SEQUENCES[index] = ColorSequence.new(HUE_WHEEL[index])
 	ORB_TINTS[index] = HUE_WHEEL[index]:Lerp(Color3.fromRGB(0, 0, 0), 0.84)
 end
+
 -- Ступени затухания шлейфа: шесть готовых последовательностей вместо сборки на кадр.
 local TRAIL_FADE_STEPS = 6
 local TRAIL_FADE_BLACK = table.create(TRAIL_FADE_STEPS)
@@ -526,8 +599,10 @@ for step = 1, TRAIL_FADE_STEPS do
 	TRAIL_FADE_BLACK[step] = Util.numberSequence({ 1 - (1 - AURA.TrailBlack) * strength, 1 })
 	TRAIL_FADE_ACCENT[step] = Util.numberSequence({ 1 - (1 - AURA.TrailAccent) * strength, 1 })
 end
+
 local Aura = {}
 Aura.__index = Aura
+
 function Aura.new()
 	return setmetatable({
 		folder = nil,
@@ -543,30 +618,38 @@ function Aura.new()
 		activeObjects = false,
 	}, Aura)
 end
+
 function Aura:setEnabled(state)
 	AURA.Enabled = state and true or false
 	return AURA.Enabled
 end
+
 function Aura:toggle()
 	return self:setEnabled(not AURA.Enabled)
 end
+
 function Aura:isEnabled()
 	return AURA.Enabled
 end
+
 function Aura:applyTheme(theme)
 	if self.highlight then
 		self.highlight.FillColor = theme.aura
 	end
 end
+
 function Aura:attach(root, character)
 	if self.folder and self.root == root then
 		return
 	end
 	self:detach()
+
 	self.root = root
 	self.character = character
+
 	local folder = Util.create("Folder", { Name = "FlightAura", Parent = Workspace })
 	self.folder = folder
+
 	-- Невидимое «ядро»: к нему крепим шлейфы и излучатели, и разворачиваем его
 	-- по направлению движения — тогда дым всегда уходит строго назад.
 	local core = Util.create("Part", {
@@ -582,6 +665,7 @@ function Aura:attach(root, character)
 		Parent = folder,
 	})
 	self.core = core
+
 	local leftPoint = Util.create("Attachment", {
 		Name = "AuraLeft",
 		Position = Vector3.new(-AURA.TrailWidth, 0, 0),
@@ -592,6 +676,7 @@ function Aura:attach(root, character)
 		Position = Vector3.new(AURA.TrailWidth, 0, 0),
 		Parent = core,
 	})
+
 	self.highlight = Util.create("Highlight", {
 		Name = "AuraHighlight",
 		Adornee = character,
@@ -603,6 +688,7 @@ function Aura:attach(root, character)
 		Enabled = false,
 		Parent = folder,
 	})
+
 	self.trailBlack = Util.create("Trail", {
 		Name = "AuraTrailBlack",
 		Attachment0 = leftPoint,
@@ -616,6 +702,7 @@ function Aura:attach(root, character)
 		Enabled = false,
 		Parent = core,
 	})
+
 	self.trailAccent = Util.create("Trail", {
 		Name = "AuraTrailAccent",
 		Attachment0 = leftPoint,
@@ -629,6 +716,7 @@ function Aura:attach(root, character)
 		Enabled = false,
 		Parent = core,
 	})
+
 	self.smoke = Util.create("ParticleEmitter", {
 		Name = "AuraSmoke",
 		Texture = AURA_TEXTURES.smoke,
@@ -650,6 +738,7 @@ function Aura:attach(root, character)
 		Enabled = false,
 		Parent = core,
 	})
+
 	self.spark = Util.create("ParticleEmitter", {
 		Name = "AuraSpark",
 		Texture = AURA_TEXTURES.spark,
@@ -670,6 +759,7 @@ function Aura:attach(root, character)
 		Enabled = false,
 		Parent = core,
 	})
+
 	self.lines = Util.create("ParticleEmitter", {
 		Name = "AuraSpeedLines",
 		Texture = AURA_TEXTURES.spark,
@@ -688,6 +778,7 @@ function Aura:attach(root, character)
 		Enabled = false,
 		Parent = core,
 	})
+
 	for index = 1, AURA.OrbCount do
 		self.orbs[index] = Util.create("Part", {
 			Name = "AuraOrb" .. index,
@@ -705,6 +796,7 @@ function Aura:attach(root, character)
 			Parent = folder,
 		})
 	end
+
 	self.light = Util.create("PointLight", {
 		Name = "AuraLight",
 		Color = Theme.get().accent,
@@ -715,6 +807,7 @@ function Aura:attach(root, character)
 		Parent = core,
 	})
 end
+
 function Aura:detach()
 	if self.folder then
 		self.folder:Destroy()
@@ -733,6 +826,7 @@ function Aura:detach()
 	self.fadeStep = 0
 	self.power = 0
 end
+
 function Aura:_setObjectsEnabled(state)
 	local quality = QUALITY_LEVELS[QUALITY.level]
 	if self.highlight then
@@ -754,6 +848,7 @@ function Aura:_setObjectsEnabled(state)
 		end
 	end
 end
+
 -- delta — время кадра, active — идёт ли полёт, root — HumanoidRootPart,
 -- velocity — текущая скорость персонажа, speedRatio — 0..1 от максимума.
 function Aura:update(delta, active, root, velocity, speedRatio)
@@ -766,9 +861,11 @@ function Aura:update(delta, active, root, velocity, speedRatio)
 	if not self.root or not self.root.Parent then
 		return
 	end
+
 	local target = (AURA.Enabled and active) and 1 or 0
 	self.power = Util.smooth(self.power, target, AURA.FadeSpeed, delta)
 	self.hue = (self.hue + delta * AURA.HueSpeed) % 1
+
 	if self.power <= 0.02 then
 		if self.activeObjects then
 			self:_setObjectsEnabled(false)
@@ -780,8 +877,10 @@ function Aura:update(delta, active, root, velocity, speedRatio)
 		self:_setObjectsEnabled(true)
 		self.activeObjects = true
 	end
+
 	local quality = QUALITY_LEVELS[QUALITY.level]
 	local power = self.power
+
 	-- Переливание: перекрашиваем только когда сменилась ступень колеса оттенков,
 	-- а не каждый кадр — это позволяет вообще не создавать объекты в цикле.
 	local wheelIndex = math.floor(self.hue * HUE_STEPS) + 1
@@ -803,6 +902,7 @@ function Aura:update(delta, active, root, velocity, speedRatio)
 			self.light.Color = HUE_WHEEL[wheelIndex]
 		end
 	end
+
 	-- Ядро ауры: позиция персонажа, разворот по вектору движения.
 	local position = self.root.Position
 	local direction = self.root.CFrame.LookVector
@@ -810,10 +910,12 @@ function Aura:update(delta, active, root, velocity, speedRatio)
 		direction = velocity.Unit
 	end
 	self.core.CFrame = CFrame.lookAt(position, position + direction)
+
 	if self.highlight then
 		self.highlight.FillTransparency = 1 - (1 - AURA.HighlightFill) * power
 		self.highlight.OutlineTransparency = 1 - (1 - AURA.HighlightEdge) * power
 	end
+
 	local fadeStep = Util.clamp(math.ceil(power * TRAIL_FADE_STEPS), 1, TRAIL_FADE_STEPS)
 	if fadeStep ~= self.fadeStep then
 		self.fadeStep = fadeStep
@@ -822,19 +924,23 @@ function Aura:update(delta, active, root, velocity, speedRatio)
 			self.trailAccent.Transparency = TRAIL_FADE_ACCENT[fadeStep]
 		end
 	end
+
 	local particleScale = quality.particleScale
 	self.smoke.Rate = AURA.SmokeRate * particleScale * power
 	self.spark.Rate = AURA.SparkRate * particleScale * power * (0.45 + 0.55 * speedRatio)
 	self.lines.Rate = quality.speedLines and (AURA.LineRate * particleScale * power * math.max(speedRatio - 0.4, 0) * 1.6) or 0
+
 	if self.light then
 		self.light.Brightness = AURA.LightBrightness * power * (0.7 + 0.3 * speedRatio)
 	end
+
 	-- Орбита тёмных сфер: мировая горизонтальная окружность вокруг персонажа.
 	self.spin = (self.spin + delta * AURA.OrbSpin * math.pi * 2) % (math.pi * 2)
 	local visible = math.max(1, math.floor(AURA.OrbCount * quality.orbScale))
 	local radius = AURA.OrbRadius * (0.8 + 0.35 * speedRatio)
 	local orbTransparency = 1 - (1 - AURA.OrbTransparency) * power
 	local tint = ORB_TINTS[self.wheelIndex > 0 and self.wheelIndex or 1]
+
 	for index, orb in ipairs(self.orbs) do
 		if index <= visible then
 			local angle = self.spin + (index - 1) * (math.pi * 2 / visible)
@@ -851,14 +957,18 @@ function Aura:update(delta, active, root, velocity, speedRatio)
 		end
 	end
 end
+
 local AuraInstance = Aura.new()
+
 Theme.onChange(function(theme)
 	AuraInstance:applyTheme(theme)
 end)
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §13. Суставы: поиск, позы, ориентация корпуса
 --  Имена подходят и для R15, и для R6: чего в риге нет — то просто пропускается.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local JOINT_ALIASES = {
 	root          = { "Root", "RootJoint" },
 	waist         = { "Waist" },
@@ -872,6 +982,7 @@ local JOINT_ALIASES = {
 	leftKnee      = { "LeftKnee" },
 	rightKnee     = { "RightKnee" },
 }
+
 local function captureJoints(character)
 	local found = {}
 	for _, descendant in ipairs(character:GetDescendants()) do
@@ -890,6 +1001,7 @@ local function captureJoints(character)
 	end
 	return found
 end
+
 -- Ориентация корпуса в мировом пространстве для горизонтального полёта:
 -- «вверх» тела смотрит по направлению движения, лицо — вниз.
 local function proneRotation(moveDirection)
@@ -905,11 +1017,14 @@ local function proneRotation(moveDirection)
 	front = front.Unit
 	return CFrame.fromMatrix(Vector3.zero, front:Cross(spine), spine, -front)
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §14. Ядро полёта
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local Flight = {}
 Flight.__index = Flight
+
 function Flight.new()
 	return setmetatable({
 		active = false,
@@ -933,18 +1048,29 @@ function Flight.new()
 		lateral = 0,
 		rollExtra = 0,
 		noclipSaved = nil,
+		moveMode = "physics",
+		watchdogTime = 0,
+		watchdogMoved = 0,
+		lastPosition = nil,
+		savedWalkSpeed = nil,
+		savedAutoRotate = nil,
+		onNotify = nil,
 	}, Flight)
 end
+
 function Flight:isActive()
 	return self.active
 end
+
 function Flight:getSpeedRatio()
 	return self.speedRatio
 end
+
 function Flight:setSpeed(value)
 	self.speed = Util.clamp(value, FLIGHT.MinSpeed, FLIGHT.MaxSpeed)
 	return self.speed
 end
+
 function Flight:getStateLabel()
 	if not self.active then
 		return "ОЖИДАНИЕ"
@@ -960,6 +1086,7 @@ function Flight:getStateLabel()
 	end
 	return "ПОЛЁТ"
 end
+
 function Flight:_clearMover()
 	if not self.mover then
 		return
@@ -972,10 +1099,12 @@ function Flight:_clearMover()
 	end
 	self.mover = nil
 end
+
 function Flight:_makeMover(root)
 	local ok, mover = pcall(function()
 		local attachment = Instance.new("Attachment")
 		attachment.Name = "FlightAttachment"
+
 		local constraint = Instance.new("LinearVelocity")
 		constraint.Name = "FlightVelocity"
 		constraint.Attachment0 = attachment
@@ -983,6 +1112,7 @@ function Flight:_makeMover(root)
 		constraint.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 		constraint.VectorVelocity = Vector3.zero
 		constraint.Enabled = false
+
 		attachment.Parent = root
 		constraint.Parent = root
 		return { kind = "constraint", attachment = attachment, constraint = constraint }
@@ -990,6 +1120,7 @@ function Flight:_makeMover(root)
 	if ok and mover then
 		return mover
 	end
+
 	-- Старый клиент: подчищаем возможные остатки и двигаем напрямую через скорость.
 	for _, name in ipairs({ "FlightAttachment", "FlightVelocity" }) do
 		local leftover = root:FindFirstChild(name)
@@ -999,6 +1130,7 @@ function Flight:_makeMover(root)
 	end
 	return { kind = "velocity" }
 end
+
 function Flight:_capturePose(character)
 	self.joints = captureJoints(character)
 	self.original = {}
@@ -1014,6 +1146,7 @@ function Flight:_capturePose(character)
 	self.rollExtra = 0
 	self.restoring = false
 end
+
 -- Поворот сустава: исходный CFrame сохраняет смещение, добавляется только вращение.
 function Flight:_applyJoint(key, angles)
 	local motor = self.joints[key]
@@ -1024,6 +1157,7 @@ function Flight:_applyJoint(key, angles)
 	local rotation = CFrame.Angles(angles.x, angles.y, angles.z)
 	motor.C0 = CFrame.new(original.Position) * (rotation * original.Rotation)
 end
+
 -- Наклон всего корпуса: крен добавляется здесь, чтобы не накапливался в self.body.
 function Flight:_applyBody(extraRoll)
 	local root = self.root
@@ -1040,30 +1174,37 @@ function Flight:_applyBody(extraRoll)
 	local localDelta = hrp:Inverse() * body * hrp
 	motor.C0 = CFrame.new(original.Position) * (localDelta * original.Rotation)
 end
+
 function Flight:_poseTargets()
 	local blend = self.blend
 	local hover = 1 - blend
 	local dive = self.dive
 	local bob = math.sin(Util.now() * 2.2) * math.rad(ANIM.BobDegrees) * hover
+
 	local armForward = math.rad(ANIM.ArmForward) * blend * (1 - dive)
 	local armDive = math.rad(ANIM.ArmDive) * blend * dive
 	local armBack = math.rad(ANIM.ArmHoverBack) * hover
 	local armSpread = math.rad(ANIM.ArmSpread) * hover
 	local armYaw = math.rad(ANIM.ArmHoverYaw) * hover
 	local armYawDive = math.rad(ANIM.ArmDiveYaw) * blend * dive
+
 	local elbow = math.rad(ANIM.ElbowHover) * hover
 		+ math.rad(ANIM.ElbowProne) * blend * (1 - dive)
 		+ math.rad(ANIM.ElbowDive) * blend * dive
+
 	local knee = math.rad(ANIM.KneeHover) * hover
 		+ math.rad(ANIM.KneeProne) * blend * (1 - dive)
 		+ math.rad(ANIM.KneeDive) * blend * dive
+
 	local head = math.rad(ANIM.HeadHover) * hover
 		+ math.rad(ANIM.HeadUpProne) * blend * (1 - dive)
 		+ math.rad(ANIM.HeadDive) * blend * dive
+
 	local hip = math.rad(ANIM.HipProne) * blend
 	local legSpread = math.rad(ANIM.LegSpread) * hover
 	local shoulderX = armForward + armDive + armBack
 	local shoulderY = armYaw + armYawDive
+
 	return {
 		waist = { x = math.rad(ANIM.LeanHover) * hover + math.rad(ANIM.WaistArch) * blend + bob * 0.4 },
 		neck = { x = head + bob * ANIM.NeckBob },
@@ -1077,6 +1218,7 @@ function Flight:_poseTargets()
 		rightKnee = { x = knee },
 	}
 end
+
 function Flight:_applyPose(delta)
 	local targets = self.restoring and {} or self:_poseTargets()
 	local alpha = 1 - math.exp(-ANIM.Response * delta)
@@ -1088,6 +1230,7 @@ function Flight:_applyPose(delta)
 		self:_applyJoint(key, current)
 	end
 end
+
 function Flight:_poseSettled()
 	if self.blend > 0.02 or math.abs(self.rollExtra) > 1 then
 		return false
@@ -1099,6 +1242,7 @@ function Flight:_poseSettled()
 	end
 	return true
 end
+
 function Flight:_restoreOriginalPose()
 	for key, motor in pairs(self.joints) do
 		local original = self.original[key]
@@ -1113,6 +1257,7 @@ function Flight:_restoreOriginalPose()
 	self.rollExtra = 0
 	self.body = CFrame.new()
 end
+
 -- Тестовый режим: персонаж перестаёт сталкиваться со стенами.
 function Flight:_setNoclip(state)
 	local character = self.character
@@ -1143,11 +1288,13 @@ function Flight:_setNoclip(state)
 		self.noclipSaved = nil
 	end
 end
+
 function Flight:_readDirection(camera)
 	local direction = Vector3.zero
 	if Util.isTyping() then
 		return direction
 	end
+
 	if camera then
 		local look = camera.CFrame.LookVector
 		local right = camera.CFrame.RightVector
@@ -1155,12 +1302,14 @@ function Flight:_readDirection(camera)
 		if Input.isDown(Enum.KeyCode.S) then direction -= look end
 		if Input.isDown(Enum.KeyCode.D) then direction += right end
 		if Input.isDown(Enum.KeyCode.A) then direction -= right end
+
 		-- Геймпад: стик. Если движение окажется инвертированным — поменяй знак у stick.Z.
 		local stick = Input.gamepadMove
 		if stick and stick.Magnitude > 0.08 then
 			direction += look * -stick.Z + right * stick.X
 		end
 	end
+
 	if Input.isDown(FLIGHT.UpKey) or Input.isDown(Enum.KeyCode.ButtonA) then
 		direction += Vector3.yAxis
 	end
@@ -1170,13 +1319,16 @@ function Flight:_readDirection(camera)
 	if Input.triggers and Input.triggers.left > 0.4 then
 		direction -= Vector3.yAxis
 	end
+
 	return direction
 end
+
 -- Крен вбок: нажатие A/D плюс боковая составляющая фактического движения.
 function Flight:_lateralInput(camera)
 	local lateral = 0
 	if Input.isDown(Enum.KeyCode.D) then lateral += 1 end
 	if Input.isDown(Enum.KeyCode.A) then lateral -= 1 end
+
 	local speed = self.velocity.Magnitude
 	if camera and speed > 1 then
 		local right = camera.CFrame.RightVector
@@ -1190,6 +1342,7 @@ function Flight:_lateralInput(camera)
 	end
 	return Util.clamp(lateral, -1, 1)
 end
+
 function Flight:_stepRoll(delta)
 	local rollInput = 0
 	-- Во время возврата позы ввод бочки игнорируем, иначе угол не дойдёт до нуля
@@ -1198,11 +1351,13 @@ function Flight:_stepRoll(delta)
 		if Input.isDown(Enum.KeyCode.E) or Input.isDown(Enum.KeyCode.ButtonR1) then rollInput += 1 end
 		if Input.isDown(Enum.KeyCode.Q) or Input.isDown(Enum.KeyCode.ButtonL1) then rollInput -= 1 end
 	end
+
 	if rollInput ~= 0 then
 		self.rollExtra += rollInput * FLIGHT.RollSpeed * delta
 		self.rolling = true
 		return
 	end
+
 	self.rolling = false
 	if self.rollExtra == 0 then
 		return
@@ -1219,22 +1374,26 @@ function Flight:_stepRoll(delta)
 		self.rollExtra -= (self.rollExtra > 0 and step or -step)
 	end
 end
+
 function Flight:bind(character)
 	self:deactivate()
 	self:_restoreOriginalPose()
 	self:_clearMover()
 	self.velocity = Vector3.zero
 	self.speedRatio = 0
+
 	local humanoid = character:WaitForChild("Humanoid", 10)
 	local root = character:WaitForChild("HumanoidRootPart", 10)
 	if not humanoid or not root then
 		return
 	end
+
 	self.character = character
 	self.humanoid = humanoid
 	self.root = root
 	self.mover = self:_makeMover(root)
 	self:_capturePose(character)
+
 	if self.animatorConnection then
 		self.animatorConnection:Disconnect()
 		self.animatorConnection = nil
@@ -1248,9 +1407,11 @@ function Flight:bind(character)
 			end
 		end)
 	end
+
 	-- Отдельный цикл кадров здесь не создаём: шаг полёта вызывает главный цикл
 	-- в §18, поэтому на весь скрипт приходится ровно один RenderStepped.
 end
+
 function Flight:activate()
 	if self.active or not self.root or not self.humanoid then
 		return false
@@ -1259,27 +1420,44 @@ function Flight:activate()
 	if humanoid.Health <= 0 then
 		return false
 	end
+
 	self.active = true
 	self.restoring = false
+
 	local root = self.root
 	self.velocity = root.AssemblyLinearVelocity
 	local limit = self.speed * FLIGHT.BoostFactor
 	if self.velocity.Magnitude > limit then
 		self.velocity = self.velocity.Unit * limit
 	end
+
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 	humanoid.PlatformStand = true
+
+	-- Humanoid умеет сам гасить любую чужую скорость, поэтому на время полёта
+	-- забираем у него управление: нулевая ходьба и выключенный разворот.
+	self.savedWalkSpeed = humanoid.WalkSpeed
+	self.savedAutoRotate = humanoid.AutoRotate
+	humanoid.WalkSpeed = 0
+	humanoid.AutoRotate = false
+
+	self.moveMode = (FLIGHT.MoveMode == "cframe") and "cframe" or "physics"
+	self.watchdogTime = 0
+	self.watchdogMoved = 0
+	self.lastPosition = root.Position
+
 	if self.mover and self.mover.constraint then
-		self.mover.constraint.Enabled = true
+		self.mover.constraint.Enabled = self.moveMode == "physics"
 	end
 	if FLIGHT.Noclip then
 		self:_setNoclip(true)
 	end
 	return true
 end
+
 function Flight:deactivate()
 	if not self.active then
 		return
@@ -1289,30 +1467,48 @@ function Flight:deactivate()
 	self.velocity = Vector3.zero
 	self.speedRatio = 0
 	self.rolling = false
+
 	if self.mover and self.mover.constraint then
 		self.mover.constraint.VectorVelocity = Vector3.zero
 		self.mover.constraint.Enabled = false
 	end
+
 	self:_setNoclip(false)
+
 	local humanoid = self.humanoid
 	if humanoid and humanoid.Parent and humanoid.Health > 0 then
 		humanoid.PlatformStand = false
+		if self.savedWalkSpeed then
+			humanoid.WalkSpeed = self.savedWalkSpeed
+		end
+		if self.savedAutoRotate ~= nil then
+			humanoid.AutoRotate = self.savedAutoRotate
+		end
 		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
 	end
+
+	self.savedWalkSpeed = nil
+	self.savedAutoRotate = nil
+	self.lastPosition = nil
 end
+
 function Flight:step(delta)
 	local root = self.root
 	if not root or not root.Parent then
 		return
 	end
+
 	local camera = Workspace.CurrentCamera
 	local flying = self.active
+
 	if flying then
 		Input.pollGamepad()
+
 		local direction = self:_readDirection(camera)
 		local boosting = Input.isDown(Enum.KeyCode.LeftShift)
 			or Input.isDown(Enum.KeyCode.RightShift)
 			or (Input.triggers and Input.triggers.right > 0.4)
+
 		local target
 		if direction.Magnitude > 0 then
 			target = direction.Unit * self.speed * (boosting and FLIGHT.BoostFactor or 1)
@@ -1320,6 +1516,7 @@ function Flight:step(delta)
 			-- Пока висим — еле заметно всплываем и оседаем.
 			target = Vector3.yAxis * math.sin(Util.now() * FLIGHT.HoverBobRate) * FLIGHT.HoverBobSpeed
 		end
+
 		-- Плавное приближение к цели плюс предохранитель по ускорению:
 		-- так резкий рывок не превращается в телепорт через полкарты.
 		local desired = self.velocity:Lerp(target, 1 - math.exp(-FLIGHT.Response * delta))
@@ -1329,21 +1526,75 @@ function Flight:step(delta)
 			change = change.Unit * maxChange
 		end
 		self.velocity += change
-		if self.mover and self.mover.kind == "constraint" then
+
+		-- Сервер и Humanoid могут вернуть свои настройки обратно, поэтому держим
+		-- контрольные значения сами: иначе персонаж просто стоит на месте.
+		local humanoid = self.humanoid
+		if not humanoid or not humanoid.Parent then
+			return
+		end
+		if humanoid.PlatformStand ~= true then
+			humanoid.PlatformStand = true
+		end
+		if humanoid.WalkSpeed ~= 0 then
+			humanoid.WalkSpeed = 0
+		end
+		if humanoid.AutoRotate ~= false then
+			humanoid.AutoRotate = false
+		end
+
+		if self.moveMode == "cframe" then
+			-- Прямая запись позиции: её не гасит ни Humanoid, ни ограничения физики.
+			-- Скорость обнуляем, чтобы гравитация не тянула вниз.
+			root.CFrame = root.CFrame + self.velocity * delta
+			root.AssemblyLinearVelocity = Vector3.zero
+		elseif self.mover and self.mover.kind == "constraint" then
 			self.mover.constraint.VectorVelocity = self.velocity
 		else
 			root.AssemblyLinearVelocity = self.velocity
 		end
 		-- В PlatformStand персонаж не держит равновесие сам — гасим вращение.
 		root.AssemblyAngularVelocity = Vector3.zero
+
+		-- Сторож: если сила есть, а перемещения нет — переходим на прямую запись.
+		-- Если и она не двигает, значит позицию возвращает сервер: локально
+		-- такой персонаж не полетит, и об этом честно сообщаем один раз.
+		if self.lastPosition then
+			self.watchdogMoved += (root.Position - self.lastPosition).Magnitude
+		end
+		self.lastPosition = root.Position
+		self.watchdogTime += delta
+		if self.watchdogTime >= FLIGHT.WatchdogTime then
+			local wantsToMove = direction.Magnitude > 0
+			local stuck = wantsToMove and self.watchdogMoved < 1
+			if stuck and self.moveMode == "physics" and FLIGHT.MoveMode == "auto" then
+				self.moveMode = "cframe"
+				if self.mover and self.mover.constraint then
+					self.mover.constraint.Enabled = false
+				end
+				if self.onNotify then
+					self.onNotify("движение переведено в режим CFrame")
+				end
+			elseif stuck and self.moveMode == "cframe" and not self.stuckNotified then
+				self.stuckNotified = true
+				if self.onNotify then
+					self.onNotify("сервер возвращает позицию: локальный полёт не сработает")
+				end
+			end
+			self.watchdogTime = 0
+			self.watchdogMoved = 0
+		end
 	end
+
 	if not flying and not self.restoring then
 		return
 	end
+
 	local speed = self.velocity.Magnitude
 	self.speedRatio = Util.clamp(speed / math.max(self.speed, 1), 0, 1)
 	local moveDirection = speed > 1 and self.velocity.Unit or Vector3.zero
 	local poseAlpha = 1 - math.exp(-ANIM.Response * delta)
+
 	local blendTarget = 0
 	local diveTarget = 0
 	local lateralTarget = 0
@@ -1356,38 +1607,49 @@ function Flight:step(delta)
 	end
 	-- Бочку считаем и во время возврата позы, чтобы угол гарантированно обнулился.
 	self:_stepRoll(delta)
+
 	self.blend = Util.smooth(self.blend, blendTarget, ANIM.Response, delta)
 	self.dive = Util.smooth(self.dive, diveTarget, ANIM.Response * 0.8, delta)
 	self.lateral = Util.smooth(self.lateral, lateralTarget, ANIM.Response, delta)
+
 	local proneTarget = CFrame.new()
 	if moveDirection.Magnitude > 0.001 then
 		proneTarget = proneRotation(moveDirection)
 	end
 	self.body = self.body:Lerp(proneTarget, poseAlpha)
+
 	local bank = -self.lateral * math.rad(ANIM.BankMax) * self.blend
 	self:_applyBody(bank + math.rad(self.rollExtra))
 	self:_applyPose(delta)
+
 	if FX.CameraEnabled then
 		CameraFX:feed(self.speedRatio, math.deg(bank), self.humanoid)
 	end
+
 	if self.restoring and self:_poseSettled() then
 		self:_restoreOriginalPose()
 	end
 end
+
 local FlightInstance = Flight.new()
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §15. Виджеты интерфейса
 --  Перетаскивание и слайдер обслуживаются общими обработчиками: на три панели
 --  и один слайдер приходится по одному событию, а не по одному на элемент.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local Ui = {}
 Ui.__index = Ui
+
 -- Объявляем слот заранее: на него ссылается подписка на смену темы ниже,
 -- а сама UiInstance создаётся в §17. Иначе замыкание увидело бы не local,
 -- а пустую глобальную переменную, и смена темы не перекрашивала бы интерфейс.
 local UiInstance
+
 local Drag = { frame = nil, start = nil, origin = nil }
 local ActiveSlider = { handler = nil }
+
 UserInputService.InputChanged:Connect(function(input)
 	local isPointer = input.UserInputType == Enum.UserInputType.MouseMovement
 		or input.UserInputType == Enum.UserInputType.Touch
@@ -1406,6 +1668,7 @@ UserInputService.InputChanged:Connect(function(input)
 		)
 	end
 end)
+
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
@@ -1413,6 +1676,7 @@ UserInputService.InputEnded:Connect(function(input)
 		ActiveSlider.handler = nil
 	end
 end)
+
 local function makeDraggable(frame, handle)
 	handle.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1423,6 +1687,7 @@ local function makeDraggable(frame, handle)
 		end
 	end)
 end
+
 local function makeRipple(button, tint)
 	button.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -1452,12 +1717,14 @@ local function makeRipple(button, tint)
 		end)
 	end)
 end
+
 -- Регистрация цвета в теме: сразу присваиваем и запоминаем для смены темы.
 function Ui:_color(instance, property, picker)
 	table.insert(self.colorTargets, { instance = instance, property = property, picker = picker })
 	instance[property] = picker(Theme.get())
 	return instance
 end
+
 -- Переливание идёт на текст, тонкие полосы и мелкие детали. Тёмные панели
 -- получают мягкий тёмный градиент: радуга на чёрном читалась бы как заливка,
 -- а не как переливание, и мешала бы тексту.
@@ -1467,6 +1734,7 @@ local function gradientIsBright(parent)
 	end
 	return parent.AbsoluteSize.Y <= 14
 end
+
 function Ui:_gradient(parent, rotation)
 	local palette = gradientIsBright(parent)
 		and Theme.get().shimmer
@@ -1479,6 +1747,7 @@ function Ui:_gradient(parent, rotation)
 	table.insert(self.gradients, gradient)
 	return gradient
 end
+
 function Ui:_button(parent, text, size, position, textSize)
 	local button = Util.create("TextButton", {
 		Size = size,
@@ -1494,6 +1763,7 @@ function Ui:_button(parent, text, size, position, textSize)
 	})
 	self:_color(button, "BackgroundColor3", function(theme) return theme.track end)
 	self:_color(button:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
+
 	local label = Util.create("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -1503,6 +1773,7 @@ function Ui:_button(parent, text, size, position, textSize)
 	})
 	Util.setFont(label, Enum.Font.GothamBold)
 	self:_color(label, "TextColor3", function(theme) return theme.text end)
+
 	makeRipple(button)
 	button.MouseEnter:Connect(function()
 		Util.tween(button, 0.15, { BackgroundTransparency = 0 })
@@ -1512,6 +1783,7 @@ function Ui:_button(parent, text, size, position, textSize)
 	end)
 	return button, label
 end
+
 function Ui:_switch(parent, y, text, initial, onChange)
 	local row = Util.create("TextButton", {
 		Position = UDim2.fromOffset(12, y),
@@ -1521,6 +1793,7 @@ function Ui:_switch(parent, y, text, initial, onChange)
 		AutoButtonColor = false,
 		Parent = parent,
 	})
+
 	local label = Util.create("TextLabel", {
 		Size = UDim2.new(1, -58, 1, 0),
 		BackgroundTransparency = 1,
@@ -1531,6 +1804,7 @@ function Ui:_switch(parent, y, text, initial, onChange)
 	})
 	Util.setFont(label, Enum.Font.GothamMedium)
 	self:_color(label, "TextColor3", function(theme) return theme.text end)
+
 	local pill = Util.create("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0),
@@ -1542,6 +1816,7 @@ function Ui:_switch(parent, y, text, initial, onChange)
 		Util.create("UIStroke", { Thickness = 1, Transparency = 0.45 }),
 	})
 	self:_color(pill:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
+
 	local knob = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 2, 0.5, 0),
@@ -1551,7 +1826,9 @@ function Ui:_switch(parent, y, text, initial, onChange)
 	}, {
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
+
 	local controller = { state = initial and true or false }
+
 	function controller:render(animate)
 		local theme = Theme.get()
 		local duration = animate and 0.18 or 0
@@ -1563,6 +1840,7 @@ function Ui:_switch(parent, y, text, initial, onChange)
 			BackgroundColor3 = controller.state and theme.accent or theme.muted,
 		})
 	end
+
 	function controller:set(value, silent)
 		controller.state = value and true or false
 		controller:render(true)
@@ -1570,12 +1848,15 @@ function Ui:_switch(parent, y, text, initial, onChange)
 			onChange(controller.state)
 		end
 	end
+
 	row.Activated:Connect(function()
 		controller:set(not controller.state)
 	end)
+
 	controller:render(false)
 	return controller
 end
+
 function Ui:_actionRow(parent, y, text, onClick)
 	local row = Util.create("TextButton", {
 		Position = UDim2.fromOffset(12, y),
@@ -1591,6 +1872,7 @@ function Ui:_actionRow(parent, y, text, onClick)
 	})
 	self:_color(row, "BackgroundColor3", function(theme) return theme.track end)
 	self:_color(row:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
+
 	local label = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(10, 0),
 		Size = UDim2.new(1, -112, 1, 0),
@@ -1602,6 +1884,7 @@ function Ui:_actionRow(parent, y, text, onClick)
 	})
 	Util.setFont(label, Enum.Font.GothamMedium)
 	self:_color(label, "TextColor3", function(theme) return theme.text end)
+
 	local value = Util.create("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -10, 0.5, 0),
@@ -1614,10 +1897,12 @@ function Ui:_actionRow(parent, y, text, onClick)
 	})
 	Util.setFont(value, Enum.Font.GothamBold)
 	self:_color(value, "TextColor3", function(theme) return theme.accent end)
+
 	makeRipple(row)
 	row.Activated:Connect(onClick)
 	return row, value
 end
+
 function Ui:_slider(parent, position, initial, onChange)
 	local slider = Util.create("TextButton", {
 		Position = position,
@@ -1627,6 +1912,7 @@ function Ui:_slider(parent, position, initial, onChange)
 		AutoButtonColor = false,
 		Parent = parent,
 	})
+
 	local track = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
@@ -1637,6 +1923,7 @@ function Ui:_slider(parent, position, initial, onChange)
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	self:_color(track, "BackgroundColor3", function(theme) return theme.track end)
+
 	local fill = Util.create("Frame", {
 		Size = UDim2.fromScale(0, 1),
 		BorderSizePixel = 0,
@@ -1646,6 +1933,7 @@ function Ui:_slider(parent, position, initial, onChange)
 	})
 	self:_color(fill, "BackgroundColor3", function(theme) return theme.accent end)
 	self:_gradient(fill, 0)
+
 	local knob = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
@@ -1659,13 +1947,16 @@ function Ui:_slider(parent, position, initial, onChange)
 	})
 	self:_color(knob, "BackgroundColor3", function(theme) return theme.text end)
 	self:_color(knob:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.accent end)
+
 	local controller = { value = initial, min = FLIGHT.MinSpeed, max = FLIGHT.MaxSpeed }
+
 	function controller:render()
 		local span = math.max(controller.max - controller.min, 0.001)
 		local alpha = Util.clamp((controller.value - controller.min) / span, 0, 1)
 		fill.Size = UDim2.fromScale(alpha, 1)
 		knob.Position = UDim2.new(alpha, 0, 0.5, 0)
 	end
+
 	local function fromX(x)
 		local width = slider.AbsoluteSize.X
 		if width <= 0 then
@@ -1678,6 +1969,7 @@ function Ui:_slider(parent, position, initial, onChange)
 			onChange(controller.value)
 		end
 	end
+
 	function controller:set(value, silent)
 		controller.value = Util.clamp(value, controller.min, controller.max)
 		controller:render()
@@ -1685,6 +1977,7 @@ function Ui:_slider(parent, position, initial, onChange)
 			onChange(controller.value)
 		end
 	end
+
 	slider.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
@@ -1692,12 +1985,15 @@ function Ui:_slider(parent, position, initial, onChange)
 			fromX(input.Position.X)
 		end
 	end)
+
 	controller:render()
 	return controller
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §16. Интерфейс целиком
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 function Ui.new()
 	local self = setmetatable({
 		colorTargets = {},
@@ -1715,6 +2011,7 @@ function Ui.new()
 		flight = nil,
 		character = nil,
 	}, Ui)
+
 	self.screenGui = Util.create("ScreenGui", {
 		Name = "FlightControllerUi",
 		ResetOnSpawn = false,
@@ -1723,6 +2020,7 @@ function Ui.new()
 		DisplayOrder = 60,
 		Parent = PlayerGui,
 	})
+
 	-- ── Кнопка-переключатель ────────────────────────────────────────────────
 	self.toggle = Util.create("TextButton", {
 		Name = "Toggle",
@@ -1747,6 +2045,7 @@ function Ui.new()
 	})
 	self:_gradient(self.toggle, 0)
 	self:_color(self.toggle:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
+
 	self.toggleDot = Util.create("Frame", {
 		LayoutOrder = 1,
 		Size = UDim2.fromOffset(9, 9),
@@ -1756,6 +2055,7 @@ function Ui.new()
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	self:_color(self.toggleDot, "BackgroundColor3", function(theme) return theme.muted end)
+
 	self.toggleLabel = Util.create("TextLabel", {
 		LayoutOrder = 2,
 		Size = UDim2.fromOffset(66, 20),
@@ -1766,6 +2066,7 @@ function Ui.new()
 	})
 	Util.setFont(self.toggleLabel, Enum.Font.GothamBold)
 	self:_color(self.toggleLabel, "TextColor3", function(theme) return theme.text end)
+
 	-- ── Основная панель ─────────────────────────────────────────────────────
 	self.panel = Util.create("Frame", {
 		Name = "Panel",
@@ -1783,6 +2084,7 @@ function Ui.new()
 	self:_color(self.panel:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
 	self.panelGradient = self:_gradient(self.panel, 90)
 	self.panelStroke = self.panel:FindFirstChildOfClass("UIStroke")
+
 	local header = Util.create("TextButton", {
 		Name = "Header",
 		Size = UDim2.new(1, 0, 0, 38),
@@ -1792,6 +2094,7 @@ function Ui.new()
 		Parent = self.panel,
 	})
 	makeDraggable(self.panel, header)
+
 	self.title = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 0),
 		Size = UDim2.new(1, -86, 1, 0),
@@ -1803,6 +2106,7 @@ function Ui.new()
 	})
 	Util.setFont(self.title, Enum.Font.GothamBold)
 	self:_gradient(self.title, 0)
+
 	self.statusDot = Util.create("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -44, 0.5, 0),
@@ -1813,6 +2117,7 @@ function Ui.new()
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	self:_color(self.statusDot, "BackgroundColor3", function(theme) return theme.muted end)
+
 	self.collapse = Util.create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -12, 0.5, 0),
@@ -1825,6 +2130,7 @@ function Ui.new()
 	})
 	Util.setFont(self.collapse, Enum.Font.GothamBold)
 	self:_color(self.collapse, "TextColor3", function(theme) return theme.muted end)
+
 	local function divider(y)
 		local line = Util.create("Frame", {
 			Position = UDim2.fromOffset(0, y),
@@ -1838,6 +2144,7 @@ function Ui.new()
 	end
 	divider(38)
 	divider(200)
+
 	self.stateLabel = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 44),
 		Size = UDim2.new(1, -110, 0, 18),
@@ -1849,6 +2156,7 @@ function Ui.new()
 	})
 	Util.setFont(self.stateLabel, Enum.Font.GothamBold)
 	self:_color(self.stateLabel, "TextColor3", function(theme) return theme.accent end)
+
 	self.keyHint = Util.create("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 46),
@@ -1861,6 +2169,7 @@ function Ui.new()
 	})
 	Util.setFont(self.keyHint, Enum.Font.GothamMedium)
 	self:_color(self.keyHint, "TextColor3", function(theme) return theme.muted end)
+
 	self.speedCaption = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 70),
 		Size = UDim2.new(0, 120, 0, 16),
@@ -1872,6 +2181,7 @@ function Ui.new()
 	})
 	Util.setFont(self.speedCaption, Enum.Font.GothamMedium)
 	self:_color(self.speedCaption, "TextColor3", function(theme) return theme.muted end)
+
 	self.speedValue = Util.create("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 66),
@@ -1884,9 +2194,11 @@ function Ui.new()
 	})
 	Util.setFont(self.speedValue, Enum.Font.GothamBold)
 	self:_gradient(self.speedValue, 0)
+
 	self.slider = self:_slider(self.panel, UDim2.fromOffset(16, 92), FLIGHT.StartSpeed, function(value)
 		FlightInstance:setSpeed(value)
 	end)
+
 	local settingsButton = self:_button(self.panel, "НАСТРОЙКИ", UDim2.fromOffset(124, 30), UDim2.fromOffset(16, 122), 10)
 	settingsButton.Activated:Connect(function()
 		self:toggleSettings()
@@ -1895,6 +2207,7 @@ function Ui.new()
 	hotkeysButton.Activated:Connect(function()
 		self:toggleHotkeys()
 	end)
+
 	for index, text in ipairs({
 		"W A S D · Space / Ctrl · Shift",
 		"Q / E — бочка · T — аура · G — тема",
@@ -1911,6 +2224,7 @@ function Ui.new()
 		Util.setFont(hint, Enum.Font.GothamMedium)
 		self:_color(hint, "TextColor3", function(theme) return theme.muted end)
 	end
+
 	local footer = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(0, 204),
 		Size = UDim2.new(1, 0, 0, 22),
@@ -1922,6 +2236,7 @@ function Ui.new()
 	})
 	Util.setFont(footer, Enum.Font.GothamMedium)
 	self:_color(footer, "TextColor3", function(theme) return theme.muted end)
+
 	-- ── HUD со спидометром ──────────────────────────────────────────────────
 	self.hud = Util.create("Frame", {
 		Name = "Hud",
@@ -1937,6 +2252,7 @@ function Ui.new()
 	self:_color(self.hud, "BackgroundColor3", function(theme) return theme.backBottom end)
 	self:_color(self.hud:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
 	self.hudGradient = self:_gradient(self.hud, 90)
+
 	self.hudSpeed = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 8),
 		Size = UDim2.new(0, 110, 0, 28),
@@ -1948,6 +2264,7 @@ function Ui.new()
 	})
 	Util.setFont(self.hudSpeed, Enum.Font.GothamBold)
 	self:_gradient(self.hudSpeed, 0)
+
 	self.hudSpeedCaption = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 36),
 		Size = UDim2.new(0, 110, 0, 14),
@@ -1959,6 +2276,7 @@ function Ui.new()
 	})
 	Util.setFont(self.hudSpeedCaption, Enum.Font.GothamMedium)
 	self:_color(self.hudSpeedCaption, "TextColor3", function(theme) return theme.muted end)
+
 	self.statePill = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 10),
@@ -1971,6 +2289,7 @@ function Ui.new()
 	})
 	self:_color(self.statePill, "BackgroundColor3", function(theme) return theme.accentSoft end)
 	self:_color(self.statePill:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.accent end)
+
 	self.statePillLabel = Util.create("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -1980,6 +2299,7 @@ function Ui.new()
 	})
 	Util.setFont(self.statePillLabel, Enum.Font.GothamBold)
 	self:_color(self.statePillLabel, "TextColor3", function(theme) return theme.text end)
+
 	self.hudAltitude = Util.create("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 8),
@@ -1992,6 +2312,7 @@ function Ui.new()
 	})
 	Util.setFont(self.hudAltitude, Enum.Font.GothamBold)
 	self:_color(self.hudAltitude, "TextColor3", function(theme) return theme.text end)
+
 	self.hudAltitudeCaption = Util.create("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 36),
@@ -2004,6 +2325,7 @@ function Ui.new()
 	})
 	Util.setFont(self.hudAltitudeCaption, Enum.Font.GothamMedium)
 	self:_color(self.hudAltitudeCaption, "TextColor3", function(theme) return theme.muted end)
+
 	self.hudTrack = Util.create("Frame", {
 		Position = UDim2.fromOffset(16, 52),
 		Size = UDim2.new(1, -32, 0, 5),
@@ -2013,6 +2335,7 @@ function Ui.new()
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	self:_color(self.hudTrack, "BackgroundColor3", function(theme) return theme.track end)
+
 	self.hudFill = Util.create("Frame", {
 		Size = UDim2.new(0, 0, 1, 0),
 		BorderSizePixel = 0,
@@ -2022,6 +2345,7 @@ function Ui.new()
 	})
 	self:_color(self.hudFill, "BackgroundColor3", function(theme) return theme.accent end)
 	self:_gradient(self.hudFill, 0)
+
 	-- Группа плавного появления HUD: только во время полёта.
 	self.hudGroup = {
 		{ instance = self.hud, property = "BackgroundTransparency", shown = 0.15, hidden = 1 },
@@ -2035,6 +2359,7 @@ function Ui.new()
 		{ instance = self.hudTrack, property = "BackgroundTransparency", shown = 0, hidden = 1 },
 		{ instance = self.hudFill, property = "BackgroundTransparency", shown = 0, hidden = 1 },
 	}
+
 	-- ── Панель настроек ─────────────────────────────────────────────────────
 	self.settingsPanel = Util.create("Frame", {
 		Name = "Settings",
@@ -2052,6 +2377,7 @@ function Ui.new()
 	self.settingsStroke = self.settingsPanel:FindFirstChildOfClass("UIStroke")
 	self:_color(self.settingsStroke, "Color", function(theme) return theme.edge end)
 	self.settingsGradient = self:_gradient(self.settingsPanel, 90)
+
 	local settingsHeader = Util.create("TextButton", {
 		Size = UDim2.new(1, 0, 0, 38),
 		BackgroundTransparency = 1,
@@ -2060,6 +2386,7 @@ function Ui.new()
 		Parent = self.settingsPanel,
 	})
 	makeDraggable(self.settingsPanel, settingsHeader)
+
 	local settingsTitle = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 0),
 		Size = UDim2.new(1, -60, 1, 0),
@@ -2071,6 +2398,7 @@ function Ui.new()
 	})
 	Util.setFont(settingsTitle, Enum.Font.GothamBold)
 	self:_gradient(settingsTitle, 0)
+
 	local closeSettings = Util.create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -12, 0.5, 0),
@@ -2086,6 +2414,7 @@ function Ui.new()
 	closeSettings.Activated:Connect(function()
 		self:toggleSettings(false)
 	end)
+
 	local settingsDivider = Util.create("Frame", {
 		Position = UDim2.fromOffset(0, 38),
 		Size = UDim2.new(1, 0, 0, 1),
@@ -2094,9 +2423,11 @@ function Ui.new()
 		Parent = self.settingsPanel,
 	})
 	self:_color(settingsDivider, "BackgroundColor3", function(theme) return theme.edge end)
+
 	local rowY = 48
 	local rowStep = 30
 	self.switches = {}
+
 	local themeRow, themeValue = self:_actionRow(self.settingsPanel, rowY, "Тема оформления", function()
 		local theme = Theme.next()
 		themeValue.Text = theme.label
@@ -2105,10 +2436,12 @@ function Ui.new()
 	themeValue.Text = Theme.get().label
 	self.themeValue = themeValue
 	rowY += rowStep
+
 	self.switches.aura = self:_switch(self.settingsPanel, rowY, "Аура", AURA.Enabled, function(state)
 		AURA.Enabled = state
 	end)
 	rowY += rowStep
+
 	self.switches.camera = self:_switch(self.settingsPanel, rowY, "Эффекты камеры", FX.CameraEnabled, function(state)
 		FX.CameraEnabled = state
 		if not state then
@@ -2116,18 +2449,22 @@ function Ui.new()
 		end
 	end)
 	rowY += rowStep
+
 	self.switches.grade = self:_switch(self.settingsPanel, rowY, "Цветокоррекция", FX.GradeEnabled, function(state)
 		FX.GradeEnabled = state
 	end)
 	rowY += rowStep
+
 	self.switches.bloom = self:_switch(self.settingsPanel, rowY, "Свечение (Bloom)", FX.BloomEnabled, function(state)
 		FX.BloomEnabled = state
 	end)
 	rowY += rowStep
+
 	self.switches.bob = self:_switch(self.settingsPanel, rowY, "Покачивание при висении", true, function(state)
 		FLIGHT.HoverBobSpeed = state and 1.1 or 0
 	end)
 	rowY += rowStep
+
 	local bankRow, bankValue = self:_actionRow(self.settingsPanel, rowY, "Крен в повороте", function()
 		local steps = { 0, 20, 40, 60 }
 		local current = ANIM.BankMax
@@ -2146,6 +2483,7 @@ function Ui.new()
 	end)
 	bankValue.Text = ANIM.BankMax .. "°"
 	rowY += rowStep
+
 	local fovRow, fovValue = self:_actionRow(self.settingsPanel, rowY, "Обзор камеры", function()
 		local steps = { 0, 12, 22, 35 }
 		local nextValue = steps[1]
@@ -2163,6 +2501,7 @@ function Ui.new()
 	end)
 	fovValue.Text = "+" .. FX.FovBoost
 	rowY += rowStep
+
 	self.switches.noclip = self:_switch(self.settingsPanel, rowY, "Сквозь стены (тест)", FLIGHT.Noclip, function(state)
 		FLIGHT.Noclip = state
 		if not state and FlightInstance then
@@ -2172,16 +2511,19 @@ function Ui.new()
 		end
 	end)
 	rowY += rowStep
+
 	self.switches.autoquality = self:_switch(self.settingsPanel, rowY, "Авто-качество", QUALITY.auto, function(state)
 		QUALITY.auto = state
 	end)
 	rowY += rowStep
+
 	local qualityRow, qualityValue = self:_actionRow(self.settingsPanel, rowY, "Качество эффектов", function()
 		QUALITY.level = (QUALITY.level % #QUALITY_LEVELS) + 1
 		qualityValue.Text = QUALITY_LEVELS[QUALITY.level].name
 	end)
 	qualityValue.Text = QUALITY_LEVELS[QUALITY.level].name
 	rowY += rowStep
+
 	local settingsFooter = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(0, 382),
 		Size = UDim2.new(1, 0, 0, 22),
@@ -2193,6 +2535,7 @@ function Ui.new()
 	})
 	Util.setFont(settingsFooter, Enum.Font.GothamMedium)
 	self:_color(settingsFooter, "TextColor3", function(theme) return theme.muted end)
+
 	-- ── Панель горячих клавиш ───────────────────────────────────────────────
 	self.hotkeysPanel = Util.create("Frame", {
 		Name = "Hotkeys",
@@ -2209,6 +2552,7 @@ function Ui.new()
 	self:_color(self.hotkeysPanel:FindFirstChildOfClass("UIStroke"), "Color", function(theme) return theme.edge end)
 	self.hotkeysStroke = self.hotkeysPanel:FindFirstChildOfClass("UIStroke")
 	self.hotkeysGradient = self:_gradient(self.hotkeysPanel, 90)
+
 	local hotkeysHeader = Util.create("TextButton", {
 		Size = UDim2.new(1, 0, 0, 38),
 		BackgroundTransparency = 1,
@@ -2217,6 +2561,7 @@ function Ui.new()
 		Parent = self.hotkeysPanel,
 	})
 	makeDraggable(self.hotkeysPanel, hotkeysHeader)
+
 	local hotkeysTitle = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 0),
 		Size = UDim2.new(1, -60, 1, 0),
@@ -2228,6 +2573,7 @@ function Ui.new()
 	})
 	Util.setFont(hotkeysTitle, Enum.Font.GothamBold)
 	self:_gradient(hotkeysTitle, 0)
+
 	local closeHotkeys = Util.create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -12, 0.5, 0),
@@ -2243,6 +2589,7 @@ function Ui.new()
 	closeHotkeys.Activated:Connect(function()
 		self:toggleHotkeys(false)
 	end)
+
 	self.hotkeysBody = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(16, 48),
 		Size = UDim2.new(1, -32, 1, -60),
@@ -2267,6 +2614,7 @@ function Ui.new()
 			"<b>P</b>  настройки",
 			"<b>K</b>  эта панель",
 			"<b>H</b>  скрыть интерфейс",
+			"<b>O</b>  диагностика полёта",
 			"",
 			"Геймпад: A / B — вверх и вниз,",
 			"стик — движение, R1 / L1 — бочка.",
@@ -2275,6 +2623,7 @@ function Ui.new()
 	})
 	Util.setFont(self.hotkeysBody, Enum.Font.GothamMedium)
 	self:_color(self.hotkeysBody, "TextColor3", function(theme) return theme.text end)
+
 	-- ── Контейнер уведомлений ───────────────────────────────────────────────
 	self.toastHolder = Util.create("Frame", {
 		Name = "Toasts",
@@ -2282,12 +2631,14 @@ function Ui.new()
 		BackgroundTransparency = 1,
 		Parent = self.screenGui,
 	})
+
 	-- ── Луч вниз для высоты ─────────────────────────────────────────────────
 	self.rayParams = RaycastParams.new()
 	self.rayParams.FilterType = Enum.RaycastFilterType.Exclude
 		or Enum.RaycastFilterType.Blacklist
 	self.rayParams.IgnoreWater = true
 	self.rayParams.FilterDescendantsInstances = {}
+
 	-- ── Переливание: тонкие полосы и обводки ────────────────────────────────
 	-- Полосы по верхнему краю панелей и обводки, цвет которых берётся из
 	-- предрасчитанного колеса оттенков. Ни одной новой ColorSequence в кадре.
@@ -2306,6 +2657,7 @@ function Ui.new()
 		self:_gradient(line, 0)
 		return line
 	end
+
 	self.shimmerLines = {
 		shimmerLine(self.panel),
 		shimmerLine(self.settingsPanel),
@@ -2327,18 +2679,120 @@ function Ui.new()
 		self.statePill:FindFirstChildOfClass("UIStroke"),
 		self.hud:FindFirstChildOfClass("UIStroke"),
 	}
+
+	-- ── Панель диагностики ──────────────────────────────────────────────────
+	-- Показывает, почему персонаж может не двигаться: режим, фактические
+	-- скорость и смещение, закрепление части, состояние Humanoid.
+	self.diagPanel = Util.create("Frame", {
+		Name = "Diagnostics",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 24, 1, -28),
+		Size = UDim2.fromOffset(312, 196),
+		BackgroundTransparency = 1,
+		Visible = false,
+		Parent = self.screenGui,
+	}, {
+		Util.create("UICorner", { CornerRadius = UDim.new(0, 14) }),
+		Util.create("UIStroke", { Thickness = 1, Transparency = 1 }),
+	})
+	self:_color(self.diagPanel, "BackgroundColor3", function(theme) return theme.backBottom end)
+	self.diagStroke = self.diagPanel:FindFirstChildOfClass("UIStroke")
+	self:_color(self.diagStroke, "Color", function(theme) return theme.edge end)
+	self:_gradient(self.diagPanel, 90)
+
+	local diagHeader = Util.create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 34),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Text = "",
+		Parent = self.diagPanel,
+	})
+	makeDraggable(self.diagPanel, diagHeader)
+
+	local diagTitle = Util.create("TextLabel", {
+		Position = UDim2.fromOffset(16, 0),
+		Size = UDim2.new(1, -60, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "ДИАГНОСТИКА ПОЛЁТА",
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = diagHeader,
+	})
+	Util.setFont(diagTitle, Enum.Font.GothamBold)
+	self:_gradient(diagTitle, 0)
+
+	local closeDiag = Util.create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(22, 22),
+		BackgroundTransparency = 1,
+		Text = "×",
+		TextSize = 16,
+		AutoButtonColor = false,
+		Parent = diagHeader,
+	})
+	Util.setFont(closeDiag, Enum.Font.GothamBold)
+	self:_color(closeDiag, "TextColor3", function(theme) return theme.muted end)
+	closeDiag.Activated:Connect(function()
+		self:toggleDiag(false)
+	end)
+
+	local diagModeRow, diagModeValue = self:_actionRow(self.diagPanel, 38, "Режим движения", function()
+		local order = { "auto", "physics", "cframe" }
+		local labels = { auto = "АВТО", physics = "ФИЗИКА", cframe = "CFRAME" }
+		local nextMode = order[1]
+		for index, mode in ipairs(order) do
+			if mode == FLIGHT.MoveMode then
+				nextMode = order[(index % #order) + 1]
+				break
+			end
+		end
+		FLIGHT.MoveMode = nextMode
+		diagModeValue.Text = labels[nextMode]
+		if FlightInstance then
+			FlightInstance.moveMode = (nextMode == "cframe") and "cframe" or "physics"
+			if FlightInstance:isActive() then
+				FlightInstance:deactivate()
+				FlightInstance:activate()
+			end
+		end
+		self:toast("режим движения: " .. labels[nextMode])
+	end)
+	diagModeValue.Text = "АВТО"
+	self.diagModeValue = diagModeValue
+
+	self.diagBody = Util.create("TextLabel", {
+		Position = UDim2.fromOffset(16, 72),
+		Size = UDim2.new(1, -32, 1, -82),
+		BackgroundTransparency = 1,
+		RichText = true,
+		TextWrapped = true,
+		LineHeight = 1.25,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = "нет данных",
+		Parent = self.diagPanel,
+	})
+	Util.setFont(self.diagBody, Enum.Font.GothamMedium)
+	self:_color(self.diagBody, "TextColor3", function(theme) return theme.text end)
+
 	return self
 end
+
 function Ui:bind(flight)
 	self.flight = flight
 end
+
 function Ui:setCharacter(character)
 	self.character = character
 end
+
 function Ui:setSpeed(value)
 	self.slider:set(value, true)
 	self.speedValue.Text = tostring(Util.round(value))
 end
+
 function Ui:toast(text)
 	local frame = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
@@ -2352,6 +2806,7 @@ function Ui:toast(text)
 		Util.create("UIStroke", { Color = Theme.get().accent, Thickness = 1, Transparency = 0.25 }),
 	})
 	self:_gradient(frame, 0)
+
 	local label = Util.create("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -2362,12 +2817,15 @@ function Ui:toast(text)
 	})
 	Util.setFont(label, Enum.Font.GothamBold)
 	label.TextColor3 = Theme.get().text
+
 	local entry = { frame = frame, alive = true }
 	table.insert(self.toasts, entry)
 	self:_layoutToasts()
+
 	Util.tween(frame, 0.25, { BackgroundTransparency = 0.1 })
 	Util.tween(label, 0.25, { TextTransparency = 0 })
 	Util.tween(frame, 0.3, { Position = UDim2.new(0.5, 0, 1, -122) })
+
 	task.delay(2, function()
 		if not entry.alive then
 			return
@@ -2389,6 +2847,7 @@ function Ui:toast(text)
 		end)
 	end)
 end
+
 function Ui:_layoutToasts()
 	for index, entry in ipairs(self.toasts) do
 		local offset = -110 - (index - 1) * 42
@@ -2397,6 +2856,7 @@ function Ui:_layoutToasts()
 		end
 	end
 end
+
 function Ui:_fadeGroup(group, visible, duration)
 	for _, entry in ipairs(group) do
 		Util.tween(entry.instance, duration, {
@@ -2404,6 +2864,7 @@ function Ui:_fadeGroup(group, visible, duration)
 		})
 	end
 end
+
 function Ui:setFlightActive(state)
 	if self.flightActive == state then
 		return
@@ -2422,12 +2883,14 @@ function Ui:setFlightActive(state)
 	self.toggleLabel.Text = state and "СТОП" or "ПОЛЁТ"
 	self:_fadeGroup(self.hudGroup, state, 0.3)
 end
+
 function Ui:toggleVisible(state)
 	if state == nil then
 		state = not self.screenGui.Enabled
 	end
 	self.screenGui.Enabled = state
 end
+
 function Ui:_setPanelOpen(panel, stroke, gradient, open, offsetX)
 	if open then
 		panel.Visible = true
@@ -2455,6 +2918,7 @@ function Ui:_setPanelOpen(panel, stroke, gradient, open, offsetX)
 		end)
 	end
 end
+
 function Ui:openPanel(state)
 	if self.panelOpen == state then
 		return
@@ -2462,6 +2926,7 @@ function Ui:openPanel(state)
 	self.panelOpen = state
 	self:_setPanelOpen(self.panel, self.panelStroke, self.panelGradient, state, -24)
 end
+
 function Ui:toggleSettings(state)
 	if state == nil then
 		state = not self.settingsOpen
@@ -2472,6 +2937,7 @@ function Ui:toggleSettings(state)
 	self.settingsOpen = state
 	self:_setPanelOpen(self.settingsPanel, self.settingsStroke, self.settingsGradient, state, -324)
 end
+
 function Ui:toggleHotkeys(state)
 	if state == nil then
 		state = not self.hotkeysOpen
@@ -2496,9 +2962,82 @@ function Ui:toggleHotkeys(state)
 		end)
 	end
 end
+
+function Ui:toggleDiag(state)
+	if state == nil then
+		state = not self.diagOpen
+	end
+	if self.diagOpen == state then
+		return
+	end
+	self.diagOpen = state
+	if state then
+		self.diagPanel.Visible = true
+		self.diagPanel.BackgroundTransparency = 1
+		Util.tween(self.diagPanel, 0.25, { BackgroundTransparency = 0 })
+		Util.tween(self.diagStroke, 0.25, { Transparency = 0.2 })
+	else
+		local animation = Util.tween(self.diagPanel, 0.2, { BackgroundTransparency = 1 })
+		Util.tween(self.diagStroke, 0.2, { Transparency = 1 })
+		animation.Completed:Once(function()
+			if not self.diagOpen then
+				self.diagPanel.Visible = false
+			end
+		end)
+	end
+end
+
+function Ui:_networkOwner(root)
+	local ok, owner = pcall(function()
+		return root:GetNetworkOwner()
+	end)
+	if not ok or not owner then
+		return "недоступно"
+	end
+	return owner.Name
+end
+
+function Ui:_renderDiagnostics(flight)
+	local root = flight.root
+	local humanoid = flight.humanoid
+	local lines = {}
+
+	local function add(label, value)
+		table.insert(lines, string.format(
+			'<font color="#8C84A8">%s</font>  <b>%s</b>', label, tostring(value)
+		))
+	end
+
+	add("режим", flight.moveMode == "cframe" and "CFrame" or "физика")
+	add("настройка", FLIGHT.MoveMode)
+
+	if root and root.Parent then
+		add("скорость заданная", Util.round(flight.velocity.Magnitude))
+		add("скорость фактическая", Util.round(root.AssemblyLinearVelocity.Magnitude))
+		add("смещение за окно", string.format("%.2f", flight.watchdogMoved))
+		add("часть закреплена", root.Anchored and "да" or "нет")
+		add("владелец сети", self:_networkOwner(root))
+	else
+		add("корень персонажа", "нет")
+	end
+
+	if humanoid and humanoid.Parent then
+		add("PlatformStand", humanoid.PlatformStand and "да" or "нет")
+		add("WalkSpeed", humanoid.WalkSpeed)
+		add("состояние", humanoid:GetState().Name)
+		add("на земле", humanoid.FloorMaterial ~= Enum.Material.Air and "да" or "нет")
+	else
+		add("Humanoid", "нет")
+	end
+
+	add("фокус в чате", Util.isTyping() and "да" or "нет")
+	self.diagBody.Text = table.concat(lines, "\n")
+end
+
 function Ui:refreshActive()
 	self:setFlightActive(FlightInstance:isActive())
 end
+
 function Ui:_measureAltitude()
 	local character = self.character
 	local root = FlightInstance.root
@@ -2516,8 +3055,10 @@ function Ui:_measureAltitude()
 	end
 	return nil
 end
+
 function Ui:playSplash()
 	Util.tween(self.toggle, 0.4, { BackgroundTransparency = 0.05 })
+
 	local overlay = Util.create("Frame", {
 		Name = "Splash",
 		Size = UDim2.fromScale(1, 1),
@@ -2526,6 +3067,7 @@ function Ui:playSplash()
 		ZIndex = 40,
 		Parent = self.screenGui,
 	})
+
 	local card = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -2540,6 +3082,7 @@ function Ui:playSplash()
 	})
 	self:_gradient(card, 90)
 	local cardStroke = card:FindFirstChildOfClass("UIStroke")
+
 	local splashTitle = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(0, 30),
 		Size = UDim2.new(1, 0, 0, 30),
@@ -2552,6 +3095,7 @@ function Ui:playSplash()
 	})
 	Util.setFont(splashTitle, Enum.Font.GothamBold)
 	self:_gradient(splashTitle, 0)
+
 	local splashCaption = Util.create("TextLabel", {
 		Position = UDim2.fromOffset(0, 62),
 		Size = UDim2.new(1, 0, 0, 16),
@@ -2564,6 +3108,7 @@ function Ui:playSplash()
 	})
 	Util.setFont(splashCaption, Enum.Font.GothamMedium)
 	self:_color(splashCaption, "TextColor3", function(theme) return theme.muted end)
+
 	local barTrack = Util.create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 1, -26),
@@ -2575,6 +3120,7 @@ function Ui:playSplash()
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	self:_color(barTrack, "BackgroundColor3", function(theme) return theme.track end)
+
 	local barFill = Util.create("Frame", {
 		Size = UDim2.new(0, 0, 1, 0),
 		BorderSizePixel = 0,
@@ -2584,12 +3130,14 @@ function Ui:playSplash()
 		Util.create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	self:_gradient(barFill, 0)
+
 	Util.tween(overlay, 0.3, { BackgroundTransparency = 0.35 })
 	Util.tween(card, 0.3, { BackgroundTransparency = 0 })
 	Util.tween(cardStroke, 0.3, { Transparency = 0.2 })
 	Util.tween(splashTitle, 0.3, { TextTransparency = 0 })
 	Util.tween(splashCaption, 0.3, { TextTransparency = 0 })
 	Util.tween(barFill, 1, { Size = UDim2.new(1, 0, 1, 0) }, Enum.EasingStyle.Quad)
+
 	task.delay(1.15, function()
 		Util.tween(overlay, 0.35, { BackgroundTransparency = 1 })
 		Util.tween(card, 0.35, { BackgroundTransparency = 1 })
@@ -2602,8 +3150,10 @@ function Ui:playSplash()
 		end)
 	end)
 end
+
 function Ui:update(delta)
 	self.time += delta
+
 	-- Переливание: двигаем готовый градиент, а не собираем цвета заново.
 	self.shimmerAccumulator += delta
 	if self.shimmerAccumulator >= 0.033 then
@@ -2626,12 +3176,15 @@ function Ui:update(delta)
 			end
 		end
 	end
+
 	local flight = self.flight
+
 	-- HUD: полоса каждый кадр (одна дешёвая запись), тексты — десять раз в секунду.
 	if flight then
 		local speed = flight.velocity.Magnitude
 		local fillRatio = Util.clamp(speed / math.max(flight.speed, 1), 0, 1)
 		self.hudFill.Size = UDim2.new(fillRatio, 0, 1, 0)
+
 		self.textAccumulator += delta
 		if self.textAccumulator >= 0.1 then
 			self.textAccumulator = 0
@@ -2642,7 +3195,11 @@ function Ui:update(delta)
 			self.hudSpeed.Text = tostring(Util.round(speed))
 			self.speedValue.Text = tostring(Util.round(flight.speed))
 			self.statusDot.BackgroundColor3 = active and Theme.get().accent or Theme.get().muted
+			if self.diagOpen then
+				self:_renderDiagnostics(flight)
+			end
 		end
+
 		self.groundAccumulator += delta
 		if self.groundAccumulator >= 0.25 then
 			self.groundAccumulator = 0
@@ -2651,6 +3208,7 @@ function Ui:update(delta)
 		end
 	end
 end
+
 function Ui:applyTheme(theme)
 	for _, target in ipairs(self.colorTargets) do
 		target.instance[target.property] = target.picker(theme)
@@ -2665,17 +3223,27 @@ function Ui:applyTheme(theme)
 		self.themeValue.Text = theme.label
 	end
 end
+
 Theme.onChange(function(theme)
 	if UiInstance then
 		UiInstance:applyTheme(theme)
 	end
 end)
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §17. Связывание: клавиши и жизненный цикл персонажа
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 UiInstance = Ui.new()
 UiInstance:bind(FlightInstance)
+
+-- Полёт сообщает интерфейсу о смене режима движения, не зная про UI напрямую.
+FlightInstance.onNotify = function(text)
+	UiInstance:toast(text)
+end
+
 local lastSpaceTap = 0
+
 local function toggleFlight(force)
 	if Util.isTyping() then
 		return
@@ -2695,22 +3263,27 @@ local function toggleFlight(force)
 		UiInstance:toast("полёт выключен")
 	end
 end
+
 -- Кнопки интерфейса подключаем здесь: toggleFlight уже существует.
 UiInstance.toggle.Activated:Connect(function()
 	toggleFlight()
 end)
+
 -- Правый клик по кнопке открывает и закрывает панель.
 UiInstance.toggle.MouseButton2Click:Connect(function()
 	UiInstance:openPanel(not UiInstance.panelOpen)
 end)
+
 UiInstance.collapse.Activated:Connect(function()
 	UiInstance:openPanel(false)
 end)
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
 		return
 	end
 	local key = input.KeyCode
+
 	if key == FLIGHT.ToggleKey or key == Enum.KeyCode.ButtonY then
 		toggleFlight()
 	elseif key == Enum.KeyCode.Space then
@@ -2749,17 +3322,22 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		UiInstance:toggleHotkeys()
 	elseif key == Enum.KeyCode.H then
 		UiInstance:toggleVisible()
+	elseif key == Enum.KeyCode.O then
+		UiInstance:toggleDiag()
 	end
 end)
+
 local function onCharacter(character)
 	FlightInstance:deactivate()
 	UiInstance:setFlightActive(false)
 	FlightInstance:bind(character)
 	UiInstance:setCharacter(character)
+
 	local root = character:WaitForChild("HumanoidRootPart", 10)
 	if root then
 		AuraInstance:attach(root, character)
 	end
+
 	local humanoid = character:WaitForChild("Humanoid", 10)
 	if humanoid then
 		humanoid.Died:Connect(function()
@@ -2768,25 +3346,32 @@ local function onCharacter(character)
 		end)
 	end
 end
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §18. Главный цикл и авто-качество
 --  Один RenderStepped на весь скрипт: полёт, аура, камера и интерфейс идут
 --  строго по порядку и из одного места, поэтому их ничто не разъезжает.
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 local fps = { accumulator = 0, frames = 0, value = 60, cooldown = 0 }
+
 RunService.RenderStepped:Connect(function(delta)
 	local active = FlightInstance:isActive()
 	local root = FlightInstance.root
 	local velocity = FlightInstance.velocity
 	local ratio = FlightInstance:getSpeedRatio()
+
 	FlightInstance:step(delta)
 	AuraInstance:update(delta, active, root, velocity, ratio)
+
 	-- Камера включается только на время полёта: вне его не тратим кадры.
 	local wantCamera = FX.CameraEnabled and FlightInstance:isActive()
 	if wantCamera ~= CameraFX.enabled then
 		CameraFX:setEnabled(wantCamera)
 	end
+
 	UiInstance:update(delta)
+
 	fps.accumulator += delta
 	fps.frames += 1
 	if fps.cooldown > 0 then
@@ -2809,13 +3394,16 @@ RunService.RenderStepped:Connect(function(delta)
 		end
 	end
 end)
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 --  §19. Старт
 -- ═══════════════════════════════════════════════════════════════════════════════
+
 FlightInstance:setSpeed(FLIGHT.StartSpeed)
 UiInstance:setSpeed(FLIGHT.StartSpeed)
 UiInstance:setFlightActive(false)
 UiInstance:playSplash()
+
 if LocalPlayer.Character then
 	onCharacter(LocalPlayer.Character)
 end
